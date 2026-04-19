@@ -23,12 +23,13 @@ FIELD-SYMBOLS: <lt_data>     TYPE STANDARD TABLE,
 
 " --- Parámetros de Filtro ---
 PARAMETERS: p_date     TYPE datum DEFAULT sy-datum,
+            p_dateto   TYPE datum DEFAULT sy-datum,                   " <-- NUEVO: Fecha Hasta
             p_timef    TYPE uzeit,
             p_timet    TYPE uzeit,
             p_user     TYPE xubname,
             p_tcode    TYPE c LENGTH 10,
             p_prog     TYPE c LENGTH 40,
-            p_taskty   TYPE c LENGTH 4.   " <-- NUEVO: D=Dialog, B=Background
+            p_taskty   TYPE c LENGTH 4.
 
 " Variables de trabajo
 DATA: lv_row_date       TYPE datum,
@@ -36,7 +37,7 @@ DATA: lv_row_date       TYPE datum,
       lv_row_user       TYPE xubname,
       lv_row_tcode      TYPE c LENGTH 10,
       lv_row_prog       TYPE c LENGTH 40,
-      lv_row_taskty     TYPE c LENGTH 4,  " <-- NUEVA VARIABLE
+      lv_row_taskty     TYPE c LENGTH 4,
       lv_total_lines    TYPE i,
       lv_filtered_count TYPE i.
 
@@ -78,7 +79,7 @@ START-OF-SELECTION.
 
     " 3. Recorrido y aplicación de filtros
     LOOP AT <lt_data> ASSIGNING <ls_row>.
-      CLEAR: lv_row_date, lv_row_time, lv_row_user, 
+      CLEAR: lv_row_date, lv_row_time, lv_row_user,
              lv_row_tcode, lv_row_prog, lv_row_taskty.
 
       " Obtener fecha (ALGDATE)
@@ -118,23 +119,28 @@ START-OF-SELECTION.
       ENDIF.
 
       " --- Aplicación de filtros ---
-      
-      " 1. Fecha
-      IF p_date IS NOT INITIAL AND lv_row_date <> p_date.
+
+      " 1. Filtro Rango de Fechas
+      " Si la fecha de la fila es MENOR a la fecha Desde -> Saltar
+      IF p_date IS NOT INITIAL AND lv_row_date < p_date.
         CONTINUE.
       ENDIF.
 
-      " 2. Hora desde
+      " Si la fecha de la fila es MAYOR a la fecha Hasta -> Saltar
+      IF p_dateto IS NOT INITIAL AND lv_row_date > p_dateto.
+        CONTINUE.
+      ENDIF.
+
+      " 2. Filtro Rango de Horas (Solo si la fecha coincide o si es un filtro global)
       IF p_timef IS NOT INITIAL AND lv_row_time < p_timef.
         CONTINUE.
       ENDIF.
 
-      " 3. Hora hasta
       IF p_timet IS NOT INITIAL AND lv_row_time > p_timet.
         CONTINUE.
       ENDIF.
 
-      " 4. Usuario
+      " 3. Filtro Usuario
       IF p_user IS NOT INITIAL.
         lv_user_cmp = p_user.
         CONDENSE lv_user_cmp.
@@ -144,7 +150,7 @@ START-OF-SELECTION.
         ENDIF.
       ENDIF.
 
-      " 5. Transacción
+      " 4. Filtro Transacción
       IF p_tcode IS NOT INITIAL.
         lv_tcode_cmp = p_tcode.
         TRANSLATE lv_tcode_cmp TO UPPER CASE.
@@ -156,7 +162,7 @@ START-OF-SELECTION.
         ENDIF.
       ENDIF.
 
-      " 6. Programa
+      " 5. Filtro Programa
       IF p_prog IS NOT INITIAL.
         lv_prog_cmp = p_prog.
         TRANSLATE lv_prog_cmp TO UPPER CASE.
@@ -168,7 +174,7 @@ START-OF-SELECTION.
         ENDIF.
       ENDIF.
 
-      " 7. Task Type (D=Dialog, B=Background)
+      " 6. Filtro Task Type (D=Dialog, B=Background)
       IF p_taskty IS NOT INITIAL.
         lv_taskty_cmp = p_taskty.
         TRANSLATE lv_taskty_cmp TO UPPER CASE.
