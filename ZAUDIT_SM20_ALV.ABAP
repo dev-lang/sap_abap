@@ -21,15 +21,13 @@ FIELD-SYMBOLS: <lt_data>     TYPE STANDARD TABLE,
                <f_prog>      TYPE any,
                <f_taskty>    TYPE any.
 
-" --- Parámetros de Filtro ---
-PARAMETERS: p_date     TYPE datum DEFAULT sy-datum,
-            p_dateto   TYPE datum DEFAULT sy-datum,                   " <-- NUEVO: Fecha Hasta
-            p_timef    TYPE uzeit,
-            p_timet    TYPE uzeit,
-            p_user     TYPE xubname,
-            p_tcode    TYPE c LENGTH 10,
-            p_prog     TYPE c LENGTH 40,
-            p_taskty   TYPE c LENGTH 4.
+" --- Select-Options (Múltiples valores, rangos y exclusiones) ---
+SELECT-OPTIONS: s_date   FOR sy-datum,   " Fecha
+                s_time   FOR sy-uzeit,   " Hora
+                s_user   FOR sy-uname,   " Usuario
+                s_tcode  FOR sy-tcode,   " Transacción
+                s_prog   FOR sy-repid.   " Programa
+PARAMETERS:     p_taskty TYPE c LENGTH 4. " Task Type (D/B)
 
 " Variables de trabajo
 DATA: lv_row_date       TYPE datum,
@@ -41,11 +39,12 @@ DATA: lv_row_date       TYPE datum,
       lv_total_lines    TYPE i,
       lv_filtered_count TYPE i.
 
-" Variables auxiliares para comparación
-DATA: lv_user_cmp       TYPE xubname,
-      lv_tcode_cmp      TYPE c LENGTH 10,
-      lv_prog_cmp       TYPE c LENGTH 40,
-      lv_taskty_cmp     TYPE c LENGTH 4.
+" Mantener comportamiento original: por defecto filtra solo HOY
+INITIALIZATION.
+  s_date-sign   = 'I'.
+  s_date-option = 'EQ'.
+  s_date-low    = sy-datum.
+  APPEND s_date.
 
 START-OF-SELECTION.
 
@@ -82,106 +81,69 @@ START-OF-SELECTION.
       CLEAR: lv_row_date, lv_row_time, lv_row_user,
              lv_row_tcode, lv_row_prog, lv_row_taskty.
 
-      " Obtener fecha (ALGDATE)
-      ASSIGN COMPONENT 'ALGDATE' OF STRUCTURE <ls_row> TO <f_date>.
-      IF sy-subrc = 0 AND <f_date> IS NOT INITIAL.
-        lv_row_date = <f_date>.
-      ENDIF.
+      " Obtener campos de la estructura dinámica
+      ASSIGN COMPONENT 'ALGDATE'     OF STRUCTURE <ls_row> TO <f_date>.
+      IF sy-subrc = 0 AND <f_date> IS NOT INITIAL. lv_row_date = <f_date>. ENDIF.
 
-      " Obtener hora (ALGTIME)
-      ASSIGN COMPONENT 'ALGTIME' OF STRUCTURE <ls_row> TO <f_time>.
-      IF sy-subrc = 0 AND <f_time> IS NOT INITIAL.
-        lv_row_time = <f_time>.
-      ENDIF.
+      ASSIGN COMPONENT 'ALGTIME'     OF STRUCTURE <ls_row> TO <f_time>.
+      IF sy-subrc = 0 AND <f_time> IS NOT INITIAL. lv_row_time = <f_time>. ENDIF.
 
-      " Obtener usuario (ALGUSER)
-      ASSIGN COMPONENT 'ALGUSER' OF STRUCTURE <ls_row> TO <f_user>.
-      IF sy-subrc = 0 AND <f_user> IS NOT INITIAL.
-        lv_row_user = <f_user>.
-      ENDIF.
+      ASSIGN COMPONENT 'ALGUSER'     OF STRUCTURE <ls_row> TO <f_user>.
+      IF sy-subrc = 0 AND <f_user> IS NOT INITIAL. lv_row_user = <f_user>. ENDIF.
 
-      " Obtener transacción (ALGTCODE)
-      ASSIGN COMPONENT 'ALGTCODE' OF STRUCTURE <ls_row> TO <f_tcode>.
-      IF sy-subrc = 0 AND <f_tcode> IS NOT INITIAL.
-        lv_row_tcode = <f_tcode>.
-      ENDIF.
+      ASSIGN COMPONENT 'ALGTCODE'    OF STRUCTURE <ls_row> TO <f_tcode>.
+      IF sy-subrc = 0 AND <f_tcode> IS NOT INITIAL. lv_row_tcode = <f_tcode>. ENDIF.
 
-      " Obtener programa (ALGREPNA)
-      ASSIGN COMPONENT 'ALGREPNA' OF STRUCTURE <ls_row> TO <f_prog>.
-      IF sy-subrc = 0 AND <f_prog> IS NOT INITIAL.
-        lv_row_prog = <f_prog>.
-      ENDIF.
+      ASSIGN COMPONENT 'ALGREPNA'    OF STRUCTURE <ls_row> TO <f_prog>.
+      IF sy-subrc = 0 AND <f_prog> IS NOT INITIAL. lv_row_prog = <f_prog>. ENDIF.
 
-      " Obtener Task Type (ALGTASKTYPE)
       ASSIGN COMPONENT 'ALGTASKTYPE' OF STRUCTURE <ls_row> TO <f_taskty>.
-      IF sy-subrc = 0 AND <f_taskty> IS NOT INITIAL.
-        lv_row_taskty = <f_taskty>.
-      ENDIF.
+      IF sy-subrc = 0 AND <f_taskty> IS NOT INITIAL. lv_row_taskty = <f_taskty>. ENDIF.
 
-      " --- Aplicación de filtros ---
+      " --- Aplicación de filtros (Lógica unificada con SELECT-OPTIONS) ---
 
-      " 1. Filtro Rango de Fechas
-      " Si la fecha de la fila es MENOR a la fecha Desde -> Saltar
-      IF p_date IS NOT INITIAL AND lv_row_date < p_date.
+      " 1. Fecha
+      IF s_date[] IS NOT INITIAL AND lv_row_date NOT IN s_date.
         CONTINUE.
       ENDIF.
 
-      " Si la fecha de la fila es MAYOR a la fecha Hasta -> Saltar
-      IF p_dateto IS NOT INITIAL AND lv_row_date > p_dateto.
+      " 2. Hora
+      IF s_time[] IS NOT INITIAL AND lv_row_time NOT IN s_time.
         CONTINUE.
       ENDIF.
 
-      " 2. Filtro Rango de Horas (Solo si la fecha coincide o si es un filtro global)
-      IF p_timef IS NOT INITIAL AND lv_row_time < p_timef.
-        CONTINUE.
-      ENDIF.
-
-      IF p_timet IS NOT INITIAL AND lv_row_time > p_timet.
-        CONTINUE.
-      ENDIF.
-
-      " 3. Filtro Usuario
-      IF p_user IS NOT INITIAL.
-        lv_user_cmp = p_user.
-        CONDENSE lv_user_cmp.
+      " 3. Usuario
+      IF s_user[] IS NOT INITIAL.
+        TRANSLATE lv_row_user TO UPPER CASE.
         CONDENSE lv_row_user.
-        IF lv_row_user <> lv_user_cmp.
+        IF lv_row_user NOT IN s_user.
           CONTINUE.
         ENDIF.
       ENDIF.
 
-      " 4. Filtro Transacción
-      IF p_tcode IS NOT INITIAL.
-        lv_tcode_cmp = p_tcode.
-        TRANSLATE lv_tcode_cmp TO UPPER CASE.
+      " 4. Transacción
+      IF s_tcode[] IS NOT INITIAL.
         TRANSLATE lv_row_tcode TO UPPER CASE.
-        CONDENSE lv_tcode_cmp.
         CONDENSE lv_row_tcode.
-        IF lv_row_tcode <> lv_tcode_cmp.
+        IF lv_row_tcode NOT IN s_tcode.
           CONTINUE.
         ENDIF.
       ENDIF.
 
-      " 5. Filtro Programa
-      IF p_prog IS NOT INITIAL.
-        lv_prog_cmp = p_prog.
-        TRANSLATE lv_prog_cmp TO UPPER CASE.
+      " 5. Programa
+      IF s_prog[] IS NOT INITIAL.
         TRANSLATE lv_row_prog TO UPPER CASE.
-        CONDENSE lv_prog_cmp.
         CONDENSE lv_row_prog.
-        IF lv_row_prog <> lv_prog_cmp.
+        IF lv_row_prog NOT IN s_prog.
           CONTINUE.
         ENDIF.
       ENDIF.
 
-      " 6. Filtro Task Type (D=Dialog, B=Background)
+      " 6. Task Type
       IF p_taskty IS NOT INITIAL.
-        lv_taskty_cmp = p_taskty.
-        TRANSLATE lv_taskty_cmp TO UPPER CASE.
         TRANSLATE lv_row_taskty TO UPPER CASE.
-        CONDENSE lv_taskty_cmp.
         CONDENSE lv_row_taskty.
-        IF lv_row_taskty <> lv_taskty_cmp.
+        IF lv_row_taskty <> p_taskty.
           CONTINUE.
         ENDIF.
       ENDIF.
